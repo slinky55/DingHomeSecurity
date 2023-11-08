@@ -1,3 +1,5 @@
+#include <DNSServer.h>
+
 #include <SPIFFS.h>
 
 #include "esp_camera.h"
@@ -7,13 +9,10 @@
 
 #include "pins.h"
 
-const char* ssid     = NULL; 
-const char* password = NULL;  
-
 const char* AP_ssid = "cam_module_id";  // or doorbell_module_id
 const char* AP_password = "dinghomesecurity";
 
-bool connectedToBase = false;
+bool connectedToWifi = false;
 
 void startCameraServer();
 void startApServer();
@@ -42,10 +41,10 @@ void setup() {
   }
 
   startApServer();
-  while (!connectedToBase);
+  while (!connectedToWifi);
   stopApServer();
 
-  WiFi.disconnect();
+  Serial.printf("Connected to Wi-Fi");
 
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
@@ -90,24 +89,13 @@ void setup() {
   // drop down frame size for higher initial frame rate
   s->set_framesize(s, FRAMESIZE_VGA);
 
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("");
-  Serial.println("WiFi connected");
+  // TODO: Connect to base station (probably UPNP)
 
   startCameraServer();
 
-  Serial.print("Camera Ready! Use 'http://");
-  Serial.print(WiFi.localIP());
-  Serial.println("' to connect");
+  Serial.printf("Camera server started");
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
   delay(10000);
 }
