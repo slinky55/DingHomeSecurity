@@ -133,7 +133,9 @@ void startServer()
     }
 
     Serial.println();
-    Serial.println("Connected to wifi network");
+    Serial.println("WiFi connected");
+    Serial.println("IP address: ");
+    Serial.println(WiFi.localIP());
 
     req->send(200);
   });
