@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -8,8 +10,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+var IPMap map[int]string
+
 func proxyStream(c *gin.Context) {
-    // ESP32 internal address
     esp32StreamURL := "http://192.168.0.190/stream"
     
     url, err := url.Parse(esp32StreamURL)
@@ -23,6 +26,8 @@ func proxyStream(c *gin.Context) {
 }
 
 func main() {
+	args := os.Args
+
 	router := gin.Default()
 
 	router.LoadHTMLFiles("./public/index.html")
@@ -30,8 +35,13 @@ func main() {
 	router.GET("/", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "index.html", nil)
 	})
+
 	router.GET("/stream", proxyStream)
 
 	// Run the server
-	router.Run(":80") // Change this port to match your server configuration
+	if len(args) > 1 {
+		router.Run(":" + args[1])
+	} 
+
+	router.Run(":8080")
 }

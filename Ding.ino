@@ -1,6 +1,8 @@
-#include <DNSServer.h>
-#include <SPIFFS.h>
-#include "esp_camera.h"
+#include <ESPmDNS.h>
+
+#include <ESPConnect.h>
+#include <espconnect_webpage.h>
+
 #include <AsyncEventSource.h>
 #include <AsyncJson.h>
 #include <AsyncWebSocket.h>
@@ -11,31 +13,87 @@
 #include <WebAuthentication.h>
 #include <WebHandlerImpl.h>
 #include <WebResponseImpl.h>
-#include <WiFi.h>
-#include "AsyncWebCamera.h"
 
 #define CAMERA_MODEL_WROVER_KIT 
+//#define DING_DOORBELL // comment this out for camera-only build
 
+#include "esp_camera.h"
+#include "AsyncWebCamera.h"
 #include "pins.h"
 
-const char* AP_ssid = "cam_module_id";  // or doorbell_module_id
+#ifdef DING_DOORBELL
+const char* AP_ssid = "doorbell_module_id";
+#else if
+const char* AP_ssid = "camera_module_id";
+#endif
+
 const char* AP_password = "dinghomesecurity";
+
+bool connectedToWifi = false;
+bool connectedToBase = false;
 
 AsyncWebServer server(80);
 
-void startServer();
+#ifdef DING_DOORBELL
+#define IR_SENS_PIN 14
+#endif 
+
+void initServer();
+camera_config_t defaultCamCfg();
 
 void setup() {
+  #ifdef DING_DOORBELL
+    pinMode(IR_SENS_PIN, INPUT);
+    pinMode(2, OUTPUT);
+  #endif
+  
   Serial.begin(115200);
   Serial.setDebugOutput(true);
   Serial.println();
 
-  if(!SPIFFS.begin(true)){
-    Serial.println("An Error has occurred while mounting SPIFFS");
-    return;
+  ESPConnect.autoConnect(AP_ssid);
+
+  if(ESPConnect.begin(&server)){
+    Serial.println("Connected to WiFi");
+    Serial.println("IPAddress: " + WiFi.localIP().toString());
+  }else{
+    Serial.println("Failed to connect to WiFi");
   }
 
+  // camera init
+  camera_config_t config = defaultCamCfg();
+  esp_err_t err = esp_camera_init(&config);
+  if (err != ESP_OK) {
+    Serial.printf("Camera init failed with error 0ax%x", err);
+    return;
+  }
+  sensor_t * s = esp_camera_sensor_get();
+  s->set_framesize(s, FRAMESIZE_VGA);
+
+  if (!MDNS.begin("esp32")) {
+      Serial.println("Error setting up MDNS server!");
+      while(1) {
+          delay(1000);
+      }
+  }
+  Serial.println("mDNS server started");
+
+  initServer();
+  server.begin();
+
+  MDNS.addService("http", "tcp", 80);
+}
+
+void loop() {
+  #ifdef DING_DOORBELL
+    // TODO: Check for doorbell stuff and send to base
+  #endif
+}
+
+
+camera_config_t defaultCamCfg() {
   camera_config_t config;
+  
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
   config.pin_d0 = Y2_GPIO_NUM;
@@ -67,81 +125,10 @@ void setup() {
     config.fb_count = 1;
   }
 
-  // camera init
-  esp_err_t err = esp_camera_init(&config);
-  if (err != ESP_OK) {
-    Serial.printf("Camera init failed with error 0ax%x", err);
-    return;
-  }
-
-  sensor_t * s = esp_camera_sensor_get();
-  // drop down frame size for higher initial frame rate
-  s->set_framesize(s, FRAMESIZE_VGA);
-
-  WiFi.disconnect();
-  WiFi.mode(WIFI_AP);
-  Serial.println("Setting soft-AP ... ");
-  boolean result = WiFi.softAP(AP_ssid, AP_password);
-  if (result) {
-    Serial.println("Ready");
-    Serial.println(String("Soft-AP IP address = ") + WiFi.softAPIP().toString());
-    Serial.println(String("MAC address = ") + WiFi.softAPmacAddress().c_str());
-  } else {
-    Serial.println("Failed!");
-  }
-
-  startServer();
+  return config;
 }
 
-void loop() {
-  delay(10000);
-}
-
-void startServer() 
-{ 
-  server.serveStatic("/", SPIFFS, "/res");
-
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest* req) {
-    req->send(SPIFFS, "/ap.html");
-  });
-
-  server.on("/connect", HTTP_POST, [](AsyncWebServerRequest* req) {
-    String s;
-    String p;
-
-    if (req->hasParam("ssid", true)) {
-      s = req->getParam("ssid", true)->value();
-    } else {
-      req->send(500, "text/plain", "Couldn't find SSID param");
-      return;
-    }
-
-    if (req->hasParam("password", true)) {
-      p = req->getParam("password", true)->value();
-    } else {
-      req->send(500, "text/plain", "Couldn't find SSID param");
-      return;
-    }
-
-    WiFi.disconnect();
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(s, p);
-    
-    while (WiFi.status() != WL_CONNECTED) {
-      Serial.print(".");
-      delay(500);
-    }
-
-    Serial.println();
-    Serial.println("WiFi connected");
-    Serial.println("IP address: ");
-    Serial.println(WiFi.localIP());
-
-    req->send(200);
-  });
-
+void initServer() {
   server.on("/capture", HTTP_GET, sendJpg);
   server.on("/stream", HTTP_GET, streamJpg);
-
-  server.begin();
 }
