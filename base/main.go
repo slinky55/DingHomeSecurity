@@ -33,5 +33,5 @@ func main() {
 	router.GET("/stream", proxyStream)
 
 	// Run the server
-	router.Run(":80") // Change this port to match your server configuration
+	router.Run(":4020") // Change this port to match your server configuration
 }
