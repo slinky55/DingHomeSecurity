@@ -1,9 +1,18 @@
 #include <DNSServer.h>
-
 #include <SPIFFS.h>
-
 #include "esp_camera.h"
+#include <AsyncEventSource.h>
+#include <AsyncJson.h>
+#include <AsyncWebSocket.h>
+#include <AsyncWebSynchronization.h>
+#include <ESPAsyncWebServer.h>
+#include <SPIFFSEditor.h>
+#include <StringArray.h>
+#include <WebAuthentication.h>
+#include <WebHandlerImpl.h>
+#include <WebResponseImpl.h>
 #include <WiFi.h>
+#include "AsyncWebCamera.h"
 
 #define CAMERA_MODEL_WROVER_KIT 
 
@@ -12,11 +21,9 @@
 const char* AP_ssid = "cam_module_id";  // or doorbell_module_id
 const char* AP_password = "dinghomesecurity";
 
-bool connectedToWifi = false;
+AsyncWebServer server(80);
 
-void startCameraServer();
-void startApServer();
-void stopApServer();
+void startServer();
 
 void setup() {
   Serial.begin(115200);
@@ -27,24 +34,6 @@ void setup() {
     Serial.println("An Error has occurred while mounting SPIFFS");
     return;
   }
-
-  WiFi.disconnect();
-  WiFi.mode(WIFI_AP);
-  Serial.println("Setting soft-AP ... ");
-  boolean result = WiFi.softAP(AP_ssid, AP_password);
-  if (result) {
-    Serial.println("Ready");
-    Serial.println(String("Soft-AP IP address = ") + WiFi.softAPIP().toString());
-    Serial.println(String("MAC address = ") + WiFi.softAPmacAddress().c_str());
-  } else {
-    Serial.println("Failed!");
-  }
-
-  startApServer();
-  while (!connectedToWifi);
-  stopApServer();
-
-  Serial.printf("Connected to Wi-Fi");
 
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
@@ -89,13 +78,68 @@ void setup() {
   // drop down frame size for higher initial frame rate
   s->set_framesize(s, FRAMESIZE_VGA);
 
-  // TODO: Connect to base station (probably UPNP)
+  WiFi.disconnect();
+  WiFi.mode(WIFI_AP);
+  Serial.println("Setting soft-AP ... ");
+  boolean result = WiFi.softAP(AP_ssid, AP_password);
+  if (result) {
+    Serial.println("Ready");
+    Serial.println(String("Soft-AP IP address = ") + WiFi.softAPIP().toString());
+    Serial.println(String("MAC address = ") + WiFi.softAPmacAddress().c_str());
+  } else {
+    Serial.println("Failed!");
+  }
 
-  startCameraServer();
-
-  Serial.printf("Camera server started");
+  startServer();
 }
 
 void loop() {
   delay(10000);
+}
+
+void startServer() 
+{ 
+  server.serveStatic("/", SPIFFS, "/res");
+
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest* req) {
+    req->send(SPIFFS, "/ap.html");
+  });
+
+  server.on("/connect", HTTP_POST, [](AsyncWebServerRequest* req) {
+    String s;
+    String p;
+
+    if (req->hasParam("ssid", true)) {
+      s = req->getParam("ssid", true)->value();
+    } else {
+      req->send(500, "text/plain", "Couldn't find SSID param");
+      return;
+    }
+
+    if (req->hasParam("password", true)) {
+      p = req->getParam("password", true)->value();
+    } else {
+      req->send(500, "text/plain", "Couldn't find SSID param");
+      return;
+    }
+
+    WiFi.disconnect();
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(s, p);
+    
+    while (WiFi.status() != WL_CONNECTED) {
+      Serial.print(".");
+      delay(500);
+    }
+
+    Serial.println();
+    Serial.println("Connected to wifi network");
+
+    req->send(200);
+  });
+
+  server.on("/capture", HTTP_GET, sendJpg);
+  server.on("/stream", HTTP_GET, streamJpg);
+
+  server.begin();
 }
