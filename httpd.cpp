@@ -11,54 +11,72 @@
 #include <WebHandlerImpl.h>
 #include <WebResponseImpl.h>
 
-AsyncWebServer* apServer = NULL;
+#include <WiFi.h>
 
-AsyncWebServer* streamServer = NULL;
+#include "AsyncWebCamera.h"
 
-extern bool connectedToBase;
+AsyncWebServer apServer(80);
+AsyncWebServer streamServer(80);
+
+extern bool connectedToWifi;
 
 void startApServer() 
 { 
-  if (streamServer) {
-    Serial.println("Stream server still running, can't start AP server...");
-    return;
-  }
-  apServer = new AsyncWebServer(80);
+  apServer.serveStatic("/", SPIFFS, "/res");
 
-  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
-
-  apServer->serveStatic("/", SPIFFS, "/res");
-
-  apServer->on("/", HTTP_GET, [](AsyncWebServerRequest* req) {
+  apServer.on("/", HTTP_GET, [](AsyncWebServerRequest* req) {
     req->send(SPIFFS, "/ap.html");
   });
 
-  apServer->addHandler(new AsyncCallbackJsonWebHandler("/connect", [](AsyncWebServerRequest *request, JsonVariant &json) {
-    const char* id = json["id"];
-    const char* pass = json["pass"];
-    Serial.println(id);
-    Serial.println(pass);
-  }));
+  apServer.on("/connect", HTTP_POST, [connectedToWifi](AsyncWebServerRequest* req) {
+    String s;
+    String p;
 
-  apServer->begin();
+    if (req->hasParam("ssid", true)) {
+      s = req->getParam("ssid", true)->value();
+    } else {
+      req->send(500, "text/plain", "Couldn't find SSID param");
+      return;
+    }
+
+    if (req->hasParam("password", true)) {
+      p = req->getParam("password", true)->value();
+    } else {
+      req->send(500, "text/plain", "Couldn't find SSID param");
+      return;
+    }
+
+    WiFi.disconnect();
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(s, p);
+    
+    while (WiFi.status() != WL_CONNECTED) {
+      Serial.print(".");
+      delay(500);
+    }
+
+    connectedToWifi = true;
+
+    req->send(200);
+  });
+
+  apServer.begin();
 }
 
 void stopApServer() 
 {
-  apServer->end();
-  delete apServer;
+  apServer.end();
 }
 
 void startCameraServer() 
 {
-  if (apServer) {
-    Serial.println("AP server still running, can't start stream server...");
-    return;
-  }
-  streamServer = new AsyncWebServer(80);
+  streamServer.on("/capture", HTTP_GET, sendJpg);
+  streamServer.on("/stream", HTTP_GET, streamJpg);
+
+  streamServer.begin();
 }
 
 void stopCameraServer()
 {
-  delete streamServer;
+  streamServer.end();
 }
