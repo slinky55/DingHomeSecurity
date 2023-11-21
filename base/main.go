@@ -1,47 +1,85 @@
 package main
 
 import (
-	"os"
-
-	"net/http"
-	"net/http/httputil"
-	"net/url"
-
 	"github.com/gin-gonic/gin"
+	"github.com/hashicorp/mdns"
+	"log"
+	"os"
+	"strings"
+	"time"
 )
 
-var IPMap map[int]string
+const DefaultPort string = "8080"
 
-func proxyStream(c *gin.Context) {
-    esp32StreamURL := "http://192.168.0.190/stream"
-    
-    url, err := url.Parse(esp32StreamURL)
-    if err != nil {
-	c.JSON(http.StatusInternalServerError, err)
-	return
-    }
+var router *gin.Engine
 
-    proxy := httputil.NewSingleHostReverseProxy(url)
-    proxy.ServeHTTP(c.Writer, c.Request)
+var devices []Device
+
+func discoverDevices() {
+	services := make(chan *mdns.ServiceEntry, 10)
+	go func() {
+		for service := range services {
+			res := dbConn.Model(&Device{}).First(nil, "ip = ?", service.AddrV4.String())
+
+			if res.RowsAffected > 0 {
+				continue
+			}
+
+			if !strings.Contains(service.Name, "dinghs") {
+				continue
+			}
+
+			device := Device{
+				Ip:       service.AddrV4.String(),
+				Hostname: service.Name,
+			}
+
+			dbConn.Create(&device)
+			devices = append(devices, device)
+		}
+	}()
+
+	for {
+		params := mdns.DefaultParams("_dinghs._tcp")
+		params.DisableIPv6 = true
+		params.Entries = services
+		err := mdns.Query(params)
+		if err != nil {
+			log.Println(err)
+		}
+		time.Sleep(time.Second * 5)
+	}
 }
 
 func main() {
 	args := os.Args
 
-	router := gin.Default()
+	err := initDB("./db.sqlite")
+	if err != nil {
+		log.Println("Failed to connect to database")
+		log.Println(err.Error())
+		return
+	}
 
-	router.LoadHTMLFiles("./public/index.html")
+	dbConn.Find(&devices)
+	go discoverDevices()
 
-	router.GET("/", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "index.html", nil)
-	})
+	router, err = CreateRouter()
+	if err != nil {
+		log.Println(err)
+		return
+	}
 
-	router.GET("/stream", proxyStream)
+	var port string
 
-	// Run the server
 	if len(args) > 1 {
-		router.Run(":" + args[1])
-	} 
+		port = args[1]
+	} else {
+		port = DefaultPort
+	}
 
-	router.Run(":8080")
+	err = router.Run(":" + port)
+	if err != nil {
+		log.Fatalln(err)
+	}
 }

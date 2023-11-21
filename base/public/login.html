@@ -38,23 +38,21 @@
             cursor: pointer;
         }
     </style>
+    <script src="https://unpkg.com/htmx.org@1.9.8" integrity="sha384-rgjA7mptc2ETQqXoYC3/zJvkU7K/aP44Y+z7xQuJiVnB/422P/Ak+F/AqFR7E4Wr" crossorigin="anonymous"></script>
 </head>
 <body>
 
 <div class="container">
     <h2>Login</h2>
-    <form action="" method="post">
+    <form action="/api/login" method="GET">
         <label for="username">Username</label>
-        <input type="text" id="username" name="username" required>
+        <input type="text" id="username" name="username" autocomplete="username" required>
 
         <label for="password">Password</label>
-        <input type="password" id="password" name="password" required>
+        <input type="password" id="password" name="password" autocomplete="current-password" required>
 
         <input type="submit" value="Login">
     </form>
 </div>
-    
-<img src="/stream" style="transform:rotate(180deg)"/>
-
 </body>
 </html>
