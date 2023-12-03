@@ -24,18 +24,18 @@
         <h1>Welcome to the Dashboard</h1>
         {{range .Data.Ids}}
             <img src="/api/stream/{{.}}"/>
-        {{end}}
         <div class="button-container">
-            <button onclick="capture()">Capture</button>
-        </div>
+            <button onclick="capture('{{.}}')">Capture</button>
+        </div>            
+        {{end}}
     </div>
     <script>
-        function capture() {
-            fetch('/api/capture', {
+        function capture(id) {
+            fetch('/api/capture/' + id, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
-                }
+                },
             })
             .then(response => response.json())
             .then(data => console.log(data))
