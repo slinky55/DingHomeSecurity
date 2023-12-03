@@ -108,22 +108,7 @@ func login(c *gin.Context) {
 		sessions.Default(c).Clear()
 	}
 
-
-    // Get the user's input
-    username := c.PostForm("username")
-    password := c.PostForm("password")
-
-    // Query the database for the user
-    var user User
-    if err := dbConn.Where("username = ?", username).First(&user).Error; err != nil {
-        return
-    }
-    if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
-        return
-    }
-
-    // User authenticated
-    c.HTML(http.StatusOK, "dashboard.html", gin.H{})
+	c.HTML(http.StatusOK, "login.html", gin.H{})
 }
 
 func register(c *gin.Context) {
@@ -137,21 +122,9 @@ func register(c *gin.Context) {
 		sessions.Default(c).Clear()
 	}
 
-	username := c.PostForm("username")
-	password := c.PostForm("password")
-
-	user := User{
-		Username:     username,
-		PasswordHash: password,
-		IsAdmin:      false,
-	}
-
-	if err := dbConn.Create(&user).Error; err != nil {
-		return
-	}
-
-	c.HTML(http.StatusOK, "login.html", gin.H{})
+	c.HTML(http.StatusOK, "register.html", gin.H{})
 }
+
 
 func dashboard(c *gin.Context) {
 	sid := sessions.Default(c).Get("id")
