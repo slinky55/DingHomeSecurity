@@ -3,11 +3,46 @@
 <head>
     <meta charset="UTF-8">
     <title>Dashboard</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            text-align: center;
+        }
+    </style>
     <script src="https://unpkg.com/htmx.org@1.9.8" integrity="sha384-rgjA7mptc2ETQqXoYC3/zJvkU7K/aP44Y+z7xQuJiVnB/422P/Ak+F/AqFR7E4Wr" crossorigin="anonymous"></script>
 </head>
 <body>
-    {{range .Data.Ids}}
-        <img src="/api/stream/{{.}}"/>
-    {{end}}
-</body>
+    <div class="container">
+        <h1>Welcome to the Dashboard</h1>
+        {{range .Data.Ids}}
+            <img src="/api/stream/{{.}}"/>
+        {{end}}
+        <div class="button-container">
+            <button onclick="capture()">Capture</button>
+        </div>
+    </div>
+    <script>
+        function capture() {
+            fetch('/api/capture', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => console.log(data))
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+    </script>
+</body> 
 </html>

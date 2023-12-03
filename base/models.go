@@ -16,3 +16,9 @@ type Device struct {
 	Name       string
 	IsDoorbell bool
 }
+
+type Frame struct {
+	Data       []byte
+	Timestamp  time.Time
+	FolderPath string
+}
