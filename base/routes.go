@@ -72,7 +72,6 @@ func capture(c *gin.Context) {
         return
     }
 
-    // Send the frame data as the response
     c.Data(http.StatusOK, "image/jpeg", frame.Data)
 }
 
