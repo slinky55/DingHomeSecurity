@@ -44,7 +44,7 @@
 
 <div class="container">
     <h2>Login</h2>
-    <form action="/api/login" method="POST">
+    <form action="/api/login" method="GET">
         <label for="username">Username</label>
         <input type="text" id="username" name="username" autocomplete="username" required>
 
@@ -54,32 +54,5 @@
         <input type="submit" value="Login">
     </form>
 </div>
-
-<script>
-    document.getElementById('loginForm').addEventListener('submit', function(event) {
-        event.preventDefault();
-
-        var username = document.getElementById('username').value;
-        var password = document.getElementById('password').value;
-
-        fetch('/api/login', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams({
-                'username': username,
-                'password': password,
-            }),
-        })
-        .then(response => response.json())
-        .then(data => console.log(data))
-        .catch((error) => {
-            console.error('Error:', error);
-        });
-    });
-</script>
-
-
 </body>
 </html>
