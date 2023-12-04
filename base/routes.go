@@ -271,7 +271,7 @@ func getFrame(id int, devices []Device, folderPath string) (*Frame, error) {
     frame := Frame{
         Data:       data,
         Timestamp:  time.Now(),
-        FolderPath: path.Join(folderPath, strconv.Itoa(int(device.ID))),
+        FolderPath: path.Join(folderPath, strconv.Itoa(int(device.ID)), captures),
     }
 
     return &frame, nil
