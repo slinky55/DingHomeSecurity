@@ -19,19 +19,23 @@ func CreateRouter() (*gin.Engine, error) {
 
 	r.Use(sessions.Sessions("logins", store))
 
+	r.Static("/data", "./data")
 	r.LoadHTMLGlob("./public/*")
 
 	r.GET("/", index)
 	r.GET("/login", login)
 	r.POST("/login", login)
 	r.GET("/register", register)
+	r.GET("/captures/:id", captures)
 	r.GET("/dashboard", dashboard)
+	r.GET("/history/:id", history)
 
 	api := r.Group("/api")
 	api.GET("/login", apiLogin)
 	api.POST("/register", apiRegister)
-	api.GET("/stream/:id", stream)
-	api.GET("/notify/:id", notify)
+	api.GET("/stream/:id", apiStream)
+	api.GET("/notify/:id", apiNotify)
+	api.GET("/capture/:id", apiCapture)
 
 	return r, nil
 }

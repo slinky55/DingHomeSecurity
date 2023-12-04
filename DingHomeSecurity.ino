@@ -23,6 +23,9 @@
 #include "AsyncWebCamera.h"
 #include "pins.h"
 
+const char* ssid = "Pixel_7766";
+const char* password = "myphone123";
+
 #ifdef DING_DOORBELL
 const char* AP_ssid = "doorbell_dinghs_uuid";
 #else if
@@ -51,12 +54,13 @@ HTTPClient http;
 void initServer();
 camera_config_t defaultCamCfg();
 
+#include <esp_wifi.h>
+
 void setup() {
 #ifdef DING_DOORBELL
   pinMode(IR_SENS_PIN, INPUT);
   pinMode(2, OUTPUT);
 #endif
-
   Serial.begin(115200);
   Serial.setDebugOutput(true);
   Serial.println();

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/hashicorp/mdns"
-	"io"
 	"log"
 	"net"
 	"net/http"
@@ -19,7 +18,7 @@ import (
 const DefaultPort string = "8080"
 const DefaultDataFolder = "data"
 const DefaultDeviceDataPath = "data/devices"
-const DefaultSaveFps = 4
+const DefaultSaveFps = 1
 
 var router *gin.Engine
 
@@ -47,8 +46,6 @@ func startDiscoveryService() {
 				Hostname: service.Name,
 			}
 
-			createDeviceDataFolder(device.ID)
-
 			baseURL := "http://" + device.Ip + "/link"
 
 			finalURL := baseURL + "?id=" + strconv.Itoa(int(device.ID)) + "&ip=" + stationIp
@@ -67,6 +64,7 @@ func startDiscoveryService() {
 			}
 
 			dbConn.Create(&device)
+			createDeviceDataFolder(device.ID)
 			devices = append(devices, device)
 		}
 	}()
@@ -84,13 +82,18 @@ func startDiscoveryService() {
 }
 
 func startHistoryService() {
-	frameCh := make(chan Frame, 10)
+	idCh := make(chan uint, 10)
 	go func() {
-		for f := range frameCh {
+		for id := range idCh {
+			f, err := getFrame(id, "history")
+			if err != nil {
+				continue
+			}
+
 			fileName := fmt.Sprintf("%d.jpg", f.Timestamp.Unix())
 			filePath := filepath.Join(f.FolderPath, fileName)
 
-			err := os.WriteFile(filePath, f.Data, 0644)
+			err = os.WriteFile(filePath, f.Data, 0644)
 			if err != nil {
 				continue
 			}
@@ -99,28 +102,7 @@ func startHistoryService() {
 
 	for {
 		for _, device := range devices {
-			resp, err := http.Get("http://" + device.Ip + "/capture")
-			if err != nil {
-				continue
-			}
-
-			data, err := io.ReadAll(resp.Body)
-			if err != nil {
-				continue
-			}
-
-			frame := Frame{
-				Data:       data,
-				Timestamp:  time.Now(),
-				FolderPath: path.Join(DefaultDeviceDataPath, strconv.Itoa(int(device.ID)), "history"),
-			}
-
-			frameCh <- frame
-
-			err = resp.Body.Close()
-			if err != nil {
-				continue
-			}
+			idCh <- device.ID
 		}
 		time.Sleep(time.Second / DefaultSaveFps)
 	}
@@ -130,22 +112,15 @@ var notifs = make(chan int, 10)
 
 func startNotificationListener() {
 	for id := range notifs {
-		resp, err := http.Get("http://" + devices[id].Ip + "/capture")
+		if id > len(devices) {
+			continue
+		}
+
+		frame, err := getFrame(uint(id), "captures")
 		if err != nil {
 			log.Println("Failed to get notification capture")
+			log.Println(err.Error())
 			continue
-		}
-
-		data, err := io.ReadAll(resp.Body)
-		if err != nil {
-			log.Println("Failed to read notification capture")
-			continue
-		}
-
-		frame := Frame{
-			Data:       data,
-			Timestamp:  time.Now(),
-			FolderPath: path.Join(DefaultDeviceDataPath, strconv.Itoa(id), "notifs"),
 		}
 
 		fileName := fmt.Sprintf("%d.jpg", frame.Timestamp.Unix())
@@ -198,6 +173,7 @@ func main() {
 			os.Exit(-1)
 		}
 	}
+
 	err := initDB("data/db.sqlite")
 	if err != nil {
 		log.Println("Failed to connect to database")

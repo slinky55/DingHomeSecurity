@@ -8,6 +8,30 @@
 <body>
     {{range .Data.Ids}}
         <img src="/api/stream/{{.}}"/>
+        <button onclick="capture('{{.}}')">Capture</button>
+        <a href="/captures/{{.}}">
+            <button>Go to captures</button>
+        </a>
+        <a href="/history/{{.}}">
+            <button>Go to history</button>
+        </a>
     {{end}}
+
+    <script>
+        async function capture(id) {
+            try {
+                const res = await fetch("/api/capture/" + id);
+
+                if (res.ok) {
+                    alert("Captured!");
+                } else {
+                    const data = await res.json();
+                    alert("Failed to capture!\n" + data.error);
+                }
+            } catch (e) {
+                console.log(e);
+            }
+        }
+    </script>
 </body>
 </html>

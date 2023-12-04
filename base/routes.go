@@ -1,12 +1,18 @@
 package main
 
 import (
+	"fmt"
 	"github.com/alexedwards/argon2id"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
+	"os/exec"
+	"path"
+	"path/filepath"
 	"strconv"
 )
 
@@ -21,34 +27,14 @@ func index(c *gin.Context) {
 		sessions.Default(c).Clear()
 	}
 
+	// not logged in, check if any users exist
+	res := dbConn.Model(&User{}).Find(nil)
+	if res.RowsAffected == 0 { // no users exist
+		c.Redirect(http.StatusTemporaryRedirect, "/register")
+		return
+	}
+
 	c.Redirect(http.StatusTemporaryRedirect, "/login")
-}
-
-func stream(c *gin.Context) {
-	var deviceUrl string
-
-	if len(devices) == 0 {
-		c.AbortWithStatus(http.StatusServiceUnavailable)
-		return
-	}
-
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error(),
-		})
-	}
-
-	deviceUrl = "http://" + devices[id].Ip + "/stream"
-
-	finalUrl, err := url.Parse(deviceUrl)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, err)
-		return
-	}
-
-	proxy := httputil.NewSingleHostReverseProxy(finalUrl)
-	proxy.ServeHTTP(c.Writer, c.Request)
 }
 
 func login(c *gin.Context) {
@@ -99,11 +85,88 @@ func dashboard(c *gin.Context) {
 
 	var data Data
 	for i := 0; i < len(devices); i++ {
-		data.Ids = append(data.Ids, devices[i].ID-1)
+		data.Ids = append(data.Ids, devices[i].ID)
 	}
 
 	c.HTML(http.StatusOK, "dashboard.html", gin.H{
 		"Data": data,
+	})
+}
+
+func captures(c *gin.Context) {
+	sid := sessions.Default(c).Get("id")
+	if sid == nil { // not logged in
+		c.Redirect(http.StatusTemporaryRedirect, "/login")
+		return
+	}
+
+	res := dbConn.Model(&User{}).First(nil, sid.(uint))
+	if res.RowsAffected == 0 { // logged in but user does not exist
+		sessions.Default(c).Clear()
+		c.Redirect(http.StatusTemporaryRedirect, "/login")
+		return
+	}
+
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	// load all images in captures folder for device
+	folderPath := filepath.Join(DefaultDeviceDataPath, strconv.Itoa(id), "captures")
+	files, err := os.ReadDir(folderPath)
+	if err != nil {
+		log.Println("Failed to read captures folder")
+		log.Println(err.Error())
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	type Data struct {
+		Paths []string
+	}
+	var data Data
+	for _, file := range files {
+		data.Paths = append(data.Paths, filepath.Join(folderPath, file.Name()))
+	}
+
+	c.HTML(http.StatusOK, "captures.html", gin.H{
+		"Data": data,
+	})
+}
+
+func history(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	histFolder := path.Join(DefaultDeviceDataPath, strconv.Itoa(id), "history")
+
+	cmd := exec.Command("/bin/bash", "../../../../folderToVideo.sh")
+	cmd.Dir = histFolder
+	_, err = cmd.Output()
+
+	if err != nil {
+		log.Println("Failed to create video")
+		log.Println(err.Error())
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	// pass path to templates
+	c.HTML(http.StatusOK, "history.html", gin.H{
+		"Path": histFolder + "/history.mp4",
 	})
 }
 
@@ -210,7 +273,34 @@ func apiRegister(c *gin.Context) {
 	c.Redirect(http.StatusTemporaryRedirect, "/login")
 }
 
-func notify(c *gin.Context) {
+func apiStream(c *gin.Context) {
+	var deviceUrl string
+
+	if len(devices) == 0 {
+		c.AbortWithStatus(http.StatusServiceUnavailable)
+		return
+	}
+
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+	}
+
+	deviceUrl = "http://" + devices[id-1].Ip + "/stream"
+
+	finalUrl, err := url.Parse(deviceUrl)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, err)
+		return
+	}
+
+	proxy := httputil.NewSingleHostReverseProxy(finalUrl)
+	proxy.ServeHTTP(c.Writer, c.Request)
+}
+
+func apiNotify(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
@@ -220,6 +310,39 @@ func notify(c *gin.Context) {
 	}
 
 	notifs <- id
+
+	c.Status(http.StatusOK)
+}
+
+func apiCapture(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	frame, err := getFrame(uint(id), "captures")
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	fileName := fmt.Sprintf("%d.jpg", frame.Timestamp.Unix())
+	filePath := filepath.Join(frame.FolderPath, fileName)
+
+	err = os.WriteFile(filePath, frame.Data, 0644)
+	if err != nil {
+		log.Println("Failed to save capture frame")
+		log.Println(err.Error())
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
 
 	c.Status(http.StatusOK)
 }
