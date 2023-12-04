@@ -6,6 +6,7 @@ import (
 	"github.com/hashicorp/mdns"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path"
@@ -17,14 +18,17 @@ import (
 
 const DefaultPort string = "8080"
 const DefaultDataFolder = "data"
-const DefaultHistoryFolder = "data/history"
+const DefaultDeviceDataPath = "data/devices"
 const DefaultSaveFps = 4
 
 var router *gin.Engine
 
 var devices []Device
 
-func discoverDevices() {
+// get local ip
+var stationIp string
+
+func startDiscoveryService() {
 	services := make(chan *mdns.ServiceEntry, 10)
 	go func() {
 		for service := range services {
@@ -43,6 +47,25 @@ func discoverDevices() {
 				Hostname: service.Name,
 			}
 
+			createDeviceDataFolder(device.ID)
+
+			baseURL := "http://" + device.Ip + "/link"
+
+			finalURL := baseURL + "?id=" + strconv.Itoa(int(device.ID)) + "&ip=" + stationIp
+
+			get, err := http.Get(finalURL)
+			if err != nil {
+				log.Println("Failed to link to device at " + device.Ip)
+				log.Println(get.Body)
+				continue
+			}
+
+			if get.StatusCode != http.StatusOK {
+				log.Println("Failed to link to device at " + device.Ip)
+				log.Println(get.Body)
+				continue
+			}
+
 			dbConn.Create(&device)
 			devices = append(devices, device)
 		}
@@ -58,12 +81,6 @@ func discoverDevices() {
 		}
 		time.Sleep(time.Second * 5)
 	}
-}
-
-type Frame struct {
-	Data       []byte
-	Timestamp  time.Time
-	FolderPath string
 }
 
 func startHistoryService() {
@@ -95,7 +112,7 @@ func startHistoryService() {
 			frame := Frame{
 				Data:       data,
 				Timestamp:  time.Now(),
-				FolderPath: path.Join(DefaultHistoryFolder, strconv.Itoa(int(device.ID))),
+				FolderPath: path.Join(DefaultDeviceDataPath, strconv.Itoa(int(device.ID)), "history"),
 			}
 
 			frameCh <- frame
@@ -109,8 +126,70 @@ func startHistoryService() {
 	}
 }
 
+var notifs = make(chan int, 10)
+
+func startNotificationListener() {
+	for id := range notifs {
+		resp, err := http.Get("http://" + devices[id].Ip + "/capture")
+		if err != nil {
+			log.Println("Failed to get notification capture")
+			continue
+		}
+
+		data, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Println("Failed to read notification capture")
+			continue
+		}
+
+		frame := Frame{
+			Data:       data,
+			Timestamp:  time.Now(),
+			FolderPath: path.Join(DefaultDeviceDataPath, strconv.Itoa(id), "notifs"),
+		}
+
+		fileName := fmt.Sprintf("%d.jpg", frame.Timestamp.Unix())
+		filePath := filepath.Join(frame.FolderPath, fileName)
+
+		err = os.WriteFile(filePath, frame.Data, 0644)
+		if err != nil {
+			log.Println("Failed to save notification capture")
+		}
+	}
+}
+
+func startCheckerService() {
+	for {
+		for _, device := range devices {
+			baseURL := "http://" + device.Ip + "/link"
+			finalURL := baseURL + "?id=" + strconv.Itoa(int(device.ID)) + "&ip=" + stationIp
+
+			resp, err := http.Get(finalURL)
+			if err != nil {
+				log.Println("Failed to get device status")
+				continue
+			}
+
+			if resp.StatusCode != http.StatusOK {
+				log.Println("Failed to get device status")
+				continue
+			}
+		}
+		time.Sleep(time.Second * 60)
+	}
+}
+
 func main() {
 	args := os.Args
+
+	host, _ := os.Hostname()
+	addrs, _ := net.LookupIP(host)
+	for _, addr := range addrs {
+		if ipv4 := addr.To4(); ipv4 != nil {
+			fmt.Println("Station ip: ", ipv4)
+			stationIp = ipv4.String()
+		}
+	}
 
 	if _, err := os.Stat(DefaultDataFolder); os.IsNotExist(err) {
 		err := os.Mkdir(DefaultDataFolder, 0755)
@@ -127,10 +206,10 @@ func main() {
 	}
 
 	dbConn.Find(&devices)
-	go discoverDevices()
+	go startDiscoveryService()
 
-	if _, err := os.Stat(DefaultHistoryFolder); os.IsNotExist(err) {
-		err := os.Mkdir(DefaultHistoryFolder, 0755)
+	if _, err := os.Stat(DefaultDeviceDataPath); os.IsNotExist(err) {
+		err := os.Mkdir(DefaultDeviceDataPath, 0755)
 		if err != nil {
 			log.Println("Failed to create history folder")
 			os.Exit(-1)
@@ -138,17 +217,14 @@ func main() {
 	}
 
 	for _, device := range devices {
-		devicePath := path.Join(DefaultHistoryFolder, strconv.Itoa(int(device.ID)))
-		if _, err := os.Stat(devicePath); os.IsNotExist(err) {
-			err := os.Mkdir(devicePath, 0755)
-			if err != nil {
-				log.Println("Failed to create history folder")
-				os.Exit(-1)
-			}
-		}
+		createDeviceDataFolder(device.ID)
 	}
 
 	go startHistoryService()
+
+	go startNotificationListener()
+
+	go startCheckerService()
 
 	router, err = CreateRouter()
 	if err != nil {
@@ -169,5 +245,43 @@ func main() {
 		log.Println("Failed to start router")
 		log.Println(err)
 		os.Exit(-1)
+	}
+}
+
+func createDeviceDataFolder(id uint) {
+	devicePath := path.Join(DefaultDeviceDataPath, strconv.Itoa(int(id)))
+
+	stillsPath := path.Join(devicePath, "history")
+	capturesPath := path.Join(devicePath, "captures")
+	notifsPath := path.Join(devicePath, "notifs")
+
+	if _, err := os.Stat(devicePath); os.IsNotExist(err) {
+		err := os.Mkdir(devicePath, 0755)
+		if err != nil {
+			log.Println("Failed to create device history folder")
+			log.Println(err.Error())
+			return
+		}
+
+		err = os.Mkdir(stillsPath, 0755)
+		if err != nil {
+			log.Println("Failed to create device stills folder")
+			log.Println(err.Error())
+			return
+		}
+
+		err = os.Mkdir(capturesPath, 0755)
+		if err != nil {
+			log.Println("Failed to create device captures folder")
+			log.Println(err.Error())
+			return
+		}
+
+		err = os.Mkdir(notifsPath, 0755)
+		if err != nil {
+			log.Println("Failed to create device notifs folder")
+			log.Println(err.Error())
+			return
+		}
 	}
 }

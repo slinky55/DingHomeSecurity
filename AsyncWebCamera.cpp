@@ -235,7 +235,7 @@ void sendBMP(AsyncWebServerRequest *request){
     request->send(response);
 }
 
-void sendJpg(AsyncWebServerRequest *request){
+void sendJpg(AsyncWebServerRequest *request) {
     camera_fb_t * fb = esp_camera_fb_get();
     if (fb == NULL) {
         log_e("Camera frame failed");

@@ -209,3 +209,17 @@ func apiRegister(c *gin.Context) {
 
 	c.Redirect(http.StatusTemporaryRedirect, "/login")
 }
+
+func notify(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	notifs <- id
+
+	c.Status(http.StatusOK)
+}

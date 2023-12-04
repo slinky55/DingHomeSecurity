@@ -31,6 +31,7 @@ func CreateRouter() (*gin.Engine, error) {
 	api.GET("/login", apiLogin)
 	api.POST("/register", apiRegister)
 	api.GET("/stream/:id", stream)
+	api.GET("/notify/:id", notify)
 
 	return r, nil
 }
