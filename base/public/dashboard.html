@@ -30,19 +30,17 @@
         {{end}}
     </div>
     <script>
-        function capture(id) {
-            fetch('/api/capture/' + id, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-            })
-            .then(response => response.json())
-            .then(data => console.log(data))
-            .catch(error => {
+        async function capture(id) {
+            try {
+                const response = await fetch('/api/capture/' + id, {
+                    method: 'GET',
+                });
+                const data = await response.json();
+                console.log(data);
+            } catch (error) {
                 console.error('Error:', error);
-            });
+            }
         }
     </script>
-</body> 
+    </html>
 </html>

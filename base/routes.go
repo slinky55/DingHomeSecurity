@@ -51,52 +51,6 @@ func stream(c *gin.Context) {
 	proxy.ServeHTTP(c.Writer, c.Request)
 }
 
-func capture(c *gin.Context) {
-	var deviceUrl string
-
-	if len(devices) == 0 {
-		c.AbortWithStatus(http.StatusServiceUnavailable)
-		return
-	}
-
-    id, err := strconv.Atoi(c.Param("id"))
-    if err != nil {
-        c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error(),
-		})
-    }
-
-    frame, err := getFrame(id, devices, DefaultHistoryFolder)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to capture frame"})
-        return
-    }
-
-    c.Data(http.StatusOK, "image/jpeg", frame.Data)
-}
-
-func getFrame(id int, devices []Device, folderPath string) (*Frame, error) {
-    device := devices[id]
-    resp, err := http.Get("http://" + device.Ip + "/capture")
-    if err != nil {
-        return nil, err
-    }
-    defer resp.Body.Close()
-
-    data, err := io.ReadAll(resp.Body)
-    if err != nil {
-        return nil, err
-    }
-
-    frame := Frame{
-        Data:       data,
-        Timestamp:  time.Now(),
-        FolderPath: path.Join(folderPath, strconv.Itoa(int(device.ID))),
-    }
-
-    return &frame, nil
-}
-
 func login(c *gin.Context) {
 	sid := sessions.Default(c).Get("id")
 	if sid != nil { // user is logged in
@@ -124,7 +78,6 @@ func register(c *gin.Context) {
 
 	c.HTML(http.StatusOK, "register.html", gin.H{})
 }
-
 
 func dashboard(c *gin.Context) {
 	sid := sessions.Default(c).Get("id")
@@ -255,4 +208,66 @@ func apiRegister(c *gin.Context) {
 	})
 
 	c.Redirect(http.StatusTemporaryRedirect, "/login")
+}
+
+func notify(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	notifs <- id
+
+	c.Status(http.StatusOK)
+}
+
+func capture(c *gin.Context) {
+	var deviceUrl string
+
+	if len(devices) == 0 {
+		c.AbortWithStatus(http.StatusServiceUnavailable)
+		return
+	}
+
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+	}
+
+	frame, err := getFrame(id, devices, DefaultHistoryFolder)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to capture frame"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": frame.Data,
+	})
+}
+
+func getFrame(id int, devices []Device, folderPath string) (*Frame, error) {
+    device := devices[id]
+    resp, err := http.Get("http://" + device.Ip + "/capture")
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+
+    data, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return nil, err
+    }
+
+    frame := Frame{
+        Data:       data,
+        Timestamp:  time.Now(),
+        FolderPath: path.Join(folderPath, strconv.Itoa(int(device.ID))),
+    }
+
+    return &frame, nil
 }
