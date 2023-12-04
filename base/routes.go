@@ -237,6 +237,7 @@ func capture(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error(),
 		})
+		return
 	}
 
 	frame, err := getFrame(id, devices, DefaultHistoryFolder)
@@ -245,21 +246,25 @@ func capture(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"data": frame.Data,
-	})
+	c.Status(http.StatusOK);
 }
 
 func getFrame(id int, devices []Device, folderPath string) (*Frame, error) {
     device := devices[id]
     resp, err := http.Get("http://" + device.Ip + "/capture")
     if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
         return nil, err
     }
     defer resp.Body.Close()
 
     data, err := io.ReadAll(resp.Body)
     if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
         return nil, err
     }
 
