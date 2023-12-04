@@ -1,6 +1,9 @@
 package main
 
-import "gorm.io/gorm"
+import (
+	"gorm.io/gorm"
+	"time"
+)
 
 type User struct {
 	gorm.Model
@@ -15,4 +18,10 @@ type Device struct {
 	Hostname   string
 	Name       string
 	IsDoorbell bool
+}
+
+type Frame struct {
+	Data       []byte
+	Timestamp  time.Time
+	FolderPath string
 }
