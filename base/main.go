@@ -46,6 +46,8 @@ func startDiscoveryService() {
 				Hostname: service.Name,
 			}
 
+			dbConn.Create(&device)
+
 			baseURL := "http://" + device.Ip + "/link"
 
 			finalURL := baseURL + "?id=" + strconv.Itoa(int(device.ID)) + "&ip=" + stationIp
@@ -63,7 +65,6 @@ func startDiscoveryService() {
 				continue
 			}
 
-			dbConn.Create(&device)
 			createDeviceDataFolder(device.ID)
 			devices = append(devices, device)
 		}

@@ -16,15 +16,12 @@
 #include <WebResponseImpl.h>
 
 #define CAMERA_MODEL_WROVER_KIT
-#define DING_DOORBELL // comment this out for camera-only build
+// #define DING_DOORBELL // comment this out for camera-only build
 #define DEBUG
 
 #include "esp_camera.h"
 #include "AsyncWebCamera.h"
 #include "pins.h"
-
-const char* ssid = "Pixel_7766";
-const char* password = "myphone123";
 
 #ifdef DING_DOORBELL
 const char* AP_ssid = "doorbell_dinghs_uuid";
@@ -136,7 +133,7 @@ void loop(){
 
     http.end();
 
-    delay(1000);
+    delay(3000);
   } else {
     digitalWrite(DEBUG_LED_PIN, LOW);
   }
